@@ -50,7 +50,9 @@ def contract_1e(f1e, fcivec, norb, nelec, link_index=None):
     link_indexa, link_indexb = direct_spin1._unpack(norb, nelec, link_index)
     na, nlinka = link_indexa.shape[:2]
     nb, nlinkb = link_indexb.shape[:2]
-    assert (fcivec.size == na*nb)
+
+    assert (fcivec.size == na*max(nb,1))
+
     ci1 = numpy.zeros_like(fcivec)
     f1e_tril = lib.pack_tril(f1e[0])
     libfci.FCIcontract_a_1e(f1e_tril.ctypes.data_as(ctypes.c_void_p),

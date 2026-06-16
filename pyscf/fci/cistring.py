@@ -90,9 +90,9 @@ def gen_occslst(orb_list, nelec):
     orb_list = list(orb_list)
     assert (nelec >= 0)
     if nelec == 0:
-        return numpy.zeros((1,nelec), dtype=numpy.int32)
+        return numpy.zeros((1,nelec), dtype=numpy.int32).view(OIndexList)
     elif nelec > len(orb_list):
-        return numpy.zeros((0,nelec), dtype=numpy.int32)
+        return numpy.zeros((0,nelec), dtype=numpy.int32).view(OIndexList)
     def gen_occs_iter(orb_list, nelec):
         if nelec == 1:
             res = [[i] for i in orb_list]

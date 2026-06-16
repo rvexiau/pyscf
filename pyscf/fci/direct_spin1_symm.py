@@ -61,6 +61,18 @@ TOTIRREPS = 8
 def contract_2e(eri, fcivec, norb, nelec, link_index=None, orbsym=None, wfnsym=0):
     if orbsym is None:
         return direct_spin1.contract_2e(eri, fcivec, norb, nelec, link_index)
+    
+    wfnsym_in_d2h = wfnsym % 10
+    orbsym_in_d2h = np.asarray(orbsym) % 10
+    max_ir = orbsym_in_d2h.max()
+    if max_ir >= 4:
+        nirreps = 8
+    elif max_ir >= 2:
+        nirreps = 4
+    elif max_ir >= 1:
+        nirreps = 2
+    else:
+        nirreps = 1
 
     eri = ao2mo.restore(4, eri, norb)
     neleca, nelecb = _unpack_nelec(nelec)
@@ -76,41 +88,46 @@ def contract_2e(eri, fcivec, norb, nelec, link_index=None, orbsym=None, wfnsym=0
         bidx, link_indexb = aidx, link_indexa
         nbs = nas
     else:
-        strsb = cistring.gen_strings4orblist(range(norb), nelecb)
-        bidx, link_indexb = gen_str_irrep(strsb, orbsym, link_indexb, rank_eri, irrep_eri)
-        nbs = np.array([x.size for x in bidx], dtype=np.int32)
+        if nelecb == 0:
+            bidx = []
+            nbs = np.zeros((nirreps,1), dtype=np.int32)
+            nbs[0,0] = 1  # dummy state with irreps = 0
+            nlinkb = 0
+            nb = 1
+        else:
+            strsb = cistring.gen_strings4orblist(range(norb), nelecb)
+            bidx, link_indexb = gen_str_irrep(strsb, orbsym, link_indexb, rank_eri, irrep_eri)
+            nbs = np.array([x.size for x in bidx], dtype=np.int32)
 
     eri_ir_dims = np.array([x.shape[0] for x in eri_irs], dtype=np.int32)
     eri_irs = np.hstack([x.ravel() for x in eri_irs])
 
-    wfnsym_in_d2h = wfnsym % 10
-    orbsym_in_d2h = np.asarray(orbsym) % 10
-    max_ir = orbsym_in_d2h.max()
-    if max_ir >= 4:
-        nirreps = 8
-    elif max_ir >= 2:
-        nirreps = 4
-    elif max_ir >= 1:
-        nirreps = 2
-    else:
-        nirreps = 1
-
     if fcivec.size == na * nb:
+        ci0 = []
         fcivec_shape = fcivec.shape
         fcivec = fcivec.reshape((na,nb), order='C')
-        ci0 = []
         for ir in range(nirreps):
-            ma, mb = aidx[ir].size, bidx[wfnsym_in_d2h ^ ir].size
-            ci0.append(np.zeros((ma, mb)))
-            if ma * mb > 0:
-                lib.take_2d(fcivec, aidx[ir], bidx[wfnsym_in_d2h ^ ir], out=ci0[ir])
+            if nelecb == 0:
+                ma = aidx[ir].size
+                ci0.append(np.zeros((ma,1)))
+                if ma  > 0 and ir == wfnsym_in_d2h:
+                    ci0[ir] = fcivec[aidx[ir]]
+            else:
+                ma, mb = aidx[ir].size, bidx[wfnsym_in_d2h ^ ir].size
+                ci0.append(np.zeros((ma, mb)))
+                if ma * mb > 0:
+                    lib.take_2d(fcivec, aidx[ir], bidx[wfnsym_in_d2h ^ ir], out=ci0[ir])
         ci_size = np.array([x.size for x in ci0], dtype=np.int32)
         ci0 = np.hstack([x.ravel() for x in ci0])
     else:
         ci_size = []
         for ir in range(nirreps):
-            ma, mb = aidx[ir].size, bidx[wfnsym_in_d2h ^ ir].size
-            ci_size.append(ma * mb)
+            if nelecb == 0:
+                ma = aidx[ir].size
+                ci_size.append(ma)
+            else:
+                ma, mb = aidx[ir].size, bidx[wfnsym_in_d2h ^ ir].size
+                ci_size.append(ma * mb)
         ci_size = np.array(ci_size, dtype=np.int32)
         ci0 = fcivec
     ci1 = np.zeros_like(ci0)
@@ -133,12 +150,17 @@ def contract_2e(eri, fcivec, norb, nelec, link_index=None, orbsym=None, wfnsym=0
         ci1new = np.zeros_like(fcivec)
         for ir in range(nirreps):
             if ci_size[ir] > 0:
-                ma, mb = aidx[ir].size, bidx[wfnsym_in_d2h ^ ir].size
-                buf = ci1[ci_loc[ir]:ci_loc[ir+1]].reshape(ma, mb)
-                lib.takebak_2d(ci1new, buf, aidx[ir], bidx[wfnsym_in_d2h ^ ir])
+                if nelecb == 0:
+                    # slow hack
+                    ma = aidx[ir].size
+                    buf = ci1[ci_loc[ir]:ci_loc[ir+1]].reshape(ma,1)
+                    ci1new[aidx[ir]] += buf
+                else:
+                    ma, mb = aidx[ir].size, bidx[wfnsym_in_d2h ^ ir].size
+                    buf = ci1[ci_loc[ir]:ci_loc[ir+1]].reshape(ma,mb)
+                    lib.takebak_2d(ci1new, buf, aidx[ir], bidx[wfnsym_in_d2h ^ ir])
         ci1 = ci1new.reshape(fcivec_shape)
     return ci1.view(direct_spin1.FCIvector)
-
 
 def kernel(h1e, eri, norb, nelec, ci0=None, level_shift=1e-3, tol=1e-10,
            lindep=1e-14, max_cycle=50, max_space=12, nroots=1,
@@ -836,13 +858,13 @@ class FCISolver(direct_spin1.FCISolver):
         if nroots > 1:
             c, c_raw = [], c
             for vec in c_raw:
-                c1 = np.zeros(na*nb)
+                c1 = np.zeros(na*max(nb,1))
                 c1[s_idx] = vec.T
-                c.append(c1.reshape(na, nb).view(direct_spin1.FCIvector))
+                c.append(c1.reshape(na, max(nb,1)).view(direct_spin1.FCIvector))
         else:
-            c1 = np.zeros(na*nb)
+            c1 = np.zeros(na*max(nb,1))
             c1[s_idx] = c
-            c = c1.reshape(na, nb).view(direct_spin1.FCIvector)
+            c = c1.reshape(na, max(nb,1)).view(direct_spin1.FCIvector)
 
         self.eci, self.ci = e, c
         return e, c
