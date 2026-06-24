@@ -65,16 +65,18 @@ ORBSYM_MAP = {
     'C1' : (1,)
 }
 
-def write_head(fout, nmo, nelec, ms=0, orbsym=None):
+def write_head(fout, nmo, nelec, ms=0, orbsym=None, pntgrp=None):
     if not isinstance(nelec, (int, numpy.number)):
         ms = abs(nelec[0] - nelec[1])
         nelec = nelec[0] + nelec[1]
     fout.write(' &FCI NORB=%4d,NELEC=%2d,MS2=%d,\n' % (nmo, nelec, ms))
     if orbsym is not None and len(orbsym) > 0:
-        fout.write('  ORBSYM=%s\n' % ','.join([str(x) for x in orbsym]))
+        fout.write('  ORBSYM=%s,\n' % ','.join([str(x) for x in orbsym]))
     else:
-        fout.write('  ORBSYM=%s\n' % ('1,' * nmo))
+        fout.write('  ORBSYM=%s,\n' % ('1,' * nmo))
     fout.write('  ISYM=1,\n')
+    if pntgrp is not None:
+        fout.write('  PNTGRP=%s,\n'% pntgrp)
     fout.write(' &END\n')
 
 
@@ -148,11 +150,11 @@ def from_chkfile(filename, chkfile, tol=TOL, float_format=DEFAULT_FLOAT_FORMAT,
             float_format=float_format, molpro_orbsym=molpro_orbsym,
             ms=mol.spin)
 
-def from_integrals(filename, h1e, h2e, nmo, nelec, nuc=0, ms=0, orbsym=None,
+def from_integrals(filename, h1e, h2e, nmo, nelec, nuc=0, ms=0, orbsym=None,pntgrp=None,
                    tol=TOL, float_format=DEFAULT_FLOAT_FORMAT):
     '''Convert the given 1-electron and 2-electron integrals to FCIDUMP format'''
     with open(filename, 'w') as fout:
-        write_head(fout, nmo, nelec, ms, orbsym)
+        write_head(fout, nmo, nelec, ms, orbsym,pntgrp)
         write_eri(fout, h2e, nmo, tol=tol, float_format=float_format)
         write_hcore(fout, h1e, nmo, tol=tol, float_format=float_format)
         output_format = float_format + '  0  0  0  0\n'
@@ -401,7 +403,7 @@ def _convert_orbsym(mol, orbsym, molpro_orbsym):
         if groupname == 'Dooh':
             groupname = 'D2h'
         elif groupname == 'Coov':
-            groupname = 'D2h'
+            groupname = 'C2v'
         else:
             raise RuntimeError(f'Unsupported point group symmetry {mol.groupname}')
         lib.logger.warn(mol, 'FCIDUMP does not support point group symmetry %s. '
