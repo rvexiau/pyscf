@@ -809,8 +809,17 @@ static void ctr_rhf2esym_kern(double *eri, double *ci0a, double *ci0b,
                 FCIprog_b_t1(ci0b, t1, bcount, intera_id, interb_id,
                              0, nb, nlinkb, clink_indexb);
         }
-        dgemm_(&TRANS_N, &TRANS_N, &bcount, &nnorb, &nnorb,
-               &D1, t1, &bcount, eri, &nnorb, &D0, vt1, &bcount);
+        if (bcount == 1) {
+                int inc = 1;
+                char TRANS_ERI = 'N'; 
+                dgemv_(&TRANS_ERI, &nnorb, &nnorb, &D1, eri, &nnorb, t1, &inc, &D0, vt1, &inc);
+                } else {
+                dgemm_(&TRANS_N, &TRANS_N, &bcount, &nnorb, &nnorb,
+                        &D1, t1, &bcount, eri, &nnorb, &D0, vt1, &bcount);
+        }
+
+        //dgemm_(&TRANS_N, &TRANS_N, &bcount, &nnorb, &nnorb,
+        //       &D1, t1, &bcount, eri, &nnorb, &D0, vt1, &bcount);
 
         if (nb > 0) {
                 // (intera,interb) * ia(beta) -> (intera,strb)

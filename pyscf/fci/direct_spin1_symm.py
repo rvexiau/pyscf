@@ -91,7 +91,7 @@ def contract_2e(eri, fcivec, norb, nelec, link_index=None, orbsym=None, wfnsym=0
         if nelecb == 0:
             bidx = []
             nbs = np.zeros((nirreps,1), dtype=np.int32)
-            nbs[0,0] = 1  # dummy state with irreps = 0
+            nbs[0,0] = 1  # one dummy state with irreps = 0
             nlinkb = 0
             nb = 1
         else:
@@ -386,14 +386,18 @@ def _cyl_sym_csf2civec(strs, addr, orbsym, degen_mapping):
     '''For orbital basis rotation from E(+/-) basis to Ex/Ey basis, mimic the CI
     transformation  addons.transform_ci(civec, (0, nelec), u)
     '''
-    norb = orbsym.size
-    one_particle_strs = np.asarray([1 << i for i in range(norb)])
-    occ_masks = (strs[:,None] & one_particle_strs) != 0
-    na = strs.size
-    occ_idx_all_strs = np.where(occ_masks)[1].reshape(na,-1)
+    if isinstance(strs, cistring.OIndexList): # debug test R.Vexiau 2026
+        occ_idx_all_strs = strs
+    else:
+        norb = orbsym.size
+        one_particle_strs = np.asarray([1 << i for i in range(norb)])
+        occ_masks = (strs[:,None] & one_particle_strs) != 0
+        na = strs.size
+        occ_idx_all_strs = np.where(occ_masks)[1].reshape(na,-1)
 
     u = _cyl_sym_orbital_rotation(orbsym, degen_mapping)
-    ui = u[occ_masks[addr]].T.copy()
+    addr_occ = occ_idx_all_strs[addr]
+    ui = u[addr_occ].T.copy()
     minors = ui[occ_idx_all_strs]
     civec = np.linalg.det(minors)
     return civec
@@ -421,17 +425,38 @@ def _cyl_sym_orbital_rotation(orbsym, degen_mapping):
 
 def _sv_associated_det(ci_str, degen_mapping):
     '''Associated determinant for the sigma_v operation'''
-    ci_str1 = 0
-    nelec = 0
-    sign = 1
-    for i, j in enumerate(degen_mapping):
-        if ci_str & (1 << i) > 0:
-            if i > j and ci_str & (1 << j) > 0:
-                # Ex, Ey orbitals swapped
+    if isinstance(ci_str, cistring.OIndexList):
+        occ_set = set(ci_str)
+        occ_idx1 = []
+        sign = 1
+        for i in ci_str:
+            j = degen_mapping[i]
+            if i > j and j in occ_set:
                 sign = -sign
-            ci_str1 |= 1 << j
-            nelec += 1
-    return cistring.str2addr(degen_mapping.size, nelec, ci_str1), sign
+            occ_idx1.append(j)
+        # insertion sort, tracking permutation parity
+        for k in range(1, len(occ_idx1)):
+            key = occ_idx1[k]
+            m = k - 1
+            while m >= 0 and occ_idx1[m] > key:
+                occ_idx1[m + 1] = occ_idx1[m]
+                sign = -sign
+                m -= 1
+            occ_idx1[m + 1] = key
+        addr = sum(cistring.num_strings(o, i+1) for i, o in enumerate(occ_idx1))
+    else:
+        ci_str1 = 0
+        nelec = 0
+        sign = 1
+        for i, j in enumerate(degen_mapping):
+            if ci_str & (1 << i) > 0:
+                if i > j and ci_str & (1 << j) > 0:
+                    # Ex, Ey orbitals swapped
+                    sign = -sign
+                ci_str1 |= 1 << j
+                nelec += 1
+        addr = cistring.str2addr(degen_mapping.size, nelec, ci_str1)
+    return addr, sign
 
 def _strs_angular_momentum(strs, orbsym):
     # angular momentum for each orbital

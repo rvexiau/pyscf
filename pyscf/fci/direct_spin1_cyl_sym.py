@@ -325,9 +325,9 @@ def get_init_guess(norb, nelec, nroots, hdiag, orbsym, wfnsym=0,
 def _guess_wfnsym(civec, strsa, strsb, orbsym):
     degen_mapping = orbsym.degen_mapping
     idx = abs(civec).argmax()
-    na = strsa.size
-    nb = strsb.size
-    civec = civec.reshape(na,nb)
+    na = len(strsa)
+    nb = len(strsb)
+    civec = civec.reshape(na,max(nb,1))
     addra = idx // nb
     addrb = idx % nb
     addra1, sign_a = _sv_associated_det(strsa[addra], degen_mapping)
