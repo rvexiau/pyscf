@@ -531,8 +531,8 @@ def gen_str_irrep(strs, orbsym, link_index, rank_eri, irrep_eri):
 def _guess_wfnsym_cyl_sym(civec, strsa, strsb, orbsym):
     degen_mapping = orbsym.degen_mapping
     idx = abs(civec).argmax()
-    na = strsa.size
-    nb = strsb.size
+    na = len(strsa)
+    nb = max(len(strsb),1)
     addra = idx // nb
     addrb = idx % nb
     addra1, sign_a = _sv_associated_det(strsa[addra], degen_mapping)
